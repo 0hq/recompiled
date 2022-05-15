@@ -5,11 +5,17 @@ import imaplib
 import json
 import smtplib, ssl
 import time, threading
+import dateutil.parser
 from pymongo import MongoClient
 from datetime import datetime, timedelta
 from dotenv import load_dotenv, find_dotenv
 
 load_dotenv(find_dotenv())
+EMAIL = os.getenv('EMAIL')
+PASSWORD = os.getenv('PASSWORD')
+IMAP_SERVER = os.getenv('IMAP_SERVER')
+SMTP_SERVER = os.getenv('SMTP_SERVER')
+PORT = 465  # For SSL
 
 StartTime = time.time()
 
@@ -37,44 +43,24 @@ class setInterval :
 # inter=setInterval(2,search_unseen)
 # print('just after setInterval -> time : {:.1f}s'.format(time.time()-StartTime))
 
-# will stop interval in 5s
-# t=threading.Timer(5,inter.cancel)
-# t.start()
-
-# with open("adatabaselmao.json") as json_file:
-#   database = json.load(json_file)
-#   print(database)
-
-# database["lastRun"] = search_string
-# with open("adatabaselmao.json", 'w') as outfile:
-#     json.dump(database, outfile, default=str)
-
-EMAIL = os.getenv('EMAIL')
-PASSWORD = os.getenv('PASSWORD')
-IMAP_SERVER = os.getenv('IMAP_SERVER')
-SMTP_SERVER = os.getenv('SMTP_SERVER')
-
 # connect to the server and go to its inbox
 mail = imaplib.IMAP4_SSL(IMAP_SERVER)
 mail.login(EMAIL, PASSWORD)
-# we choose the inbox but you can select others
-mail.select('inbox')
+mail.select('inbox') # we choose the inbox but you can select others
 
-PORT = 465  # For SSL
 context = ssl.create_default_context()
 
 url = os.getenv('MONGO_URL')
-client = MongoClient("mongodb+srv://server:Pfi88XLO8TrqSgqY@cluster0.ztv48.mongodb.net/Main?retryWrites=true&w=majority"
-)
+client = MongoClient("mongodb+srv://server:Pfi88XLO8TrqSgqY@cluster0.ztv48.mongodb.net/Main?retryWrites=true&w=majority")
 main_db = client.Main
-
-
-# ---------- setup area -------------
-
 wdb = main_db.Writers
+
+# wdb.update_one({'email': "test@altr.fyi" }, {'$set': {'start_date': datetime.today().replace(microsecond=0)}}) 
 # test = wdb.find()
 # for r in test:
 #     print(r)
+
+# ---------- setup area -------------
 
 def cron_job():
     search_unseen()
@@ -85,19 +71,20 @@ def check_invite_expiry():
     now = datetime.now()
     ws = wdb.find({ "accepted": False, "expired": False}) # gets all invited writer
     for w in ws:
-        if w.start_date < (now - timedelta(days=7)):
+        if w["start_date"] < (now - timedelta(days=7)):
             expire_invite(w.email, w.genesis_inviter)
 
 def check_subscription_expiry():
     now = datetime.now()
     ws = wdb.find({ "accepted": True, "expired": False}) # gets all writers
     for w in ws:
-        if w.last_send_date < (now - timedelta(days=30)):
+        print(w)
+        if w["last_send_date"] < (now - timedelta(days=30)):
             if get_strikes() == 0:
-                warning_email(w.email, w.subscribers)
+                warning_email(w["email"], w["subscribers"])
             else:
-                expire_subscription(w.email, w.subscribers)
-            wdb.update_one({'email': x.metadata.writer },{'$push': {'strikes': now}}) 
+                expire_subscription(w["email"], w["subscribers"])
+            wdb.update_one({'email': w["email"] },{'$push': {'strikes': now}}) 
             # i do this after so i don't need to async await for the logic to be consistent
 
 def search_unseen():
@@ -173,6 +160,7 @@ def search_unseen():
                 split = mail_content.split('000')
                 for x in split:
                     if len(x) == 8:
+                        print(f'Split, len 8: {x}')
                         try:
                             secret_code = int(x)
                             if check_code(secret_code, mail_from):
@@ -188,7 +176,7 @@ def search_unseen():
 def get_strikes(strikes):
     x = 0
     for s in strikes:
-        if s.date < (now - timedelta(days=60)):
+        if s["date"] < (now - timedelta(days=60)):
             x += 1
     return x
                         
@@ -243,7 +231,6 @@ def warning_email(writer, subs):
     send_email(writer, writer_content) 
     for s in subs:
         send_email(s.email, inviter_content)
-
     
 def expire_subscription(writer, subs):
     inviter_content = f'''\
@@ -266,7 +253,7 @@ def expire_subscription(writer, subs):
     '''
     send_email(writer, writer_content) 
     for s in subs:
-        send_email(s.email, inviter_content)
+        send_email(s["email"], inviter_content)
     wdb.update_one({'email': sender },{'$set': {'expired': True}})
     cancel_vendor_account(sender)
 
@@ -308,8 +295,8 @@ def dispatch_email(sender, subject, content):
         - Will DePue
     '''
     c = wdb.find_one({ "email": sender })
-    for x in c.subscribers:
-        send_email(x.email, sub_content) 
+    for x in c["subscribers"]:
+        send_email(x["email"], sub_content) 
     wdb.update_one({'email': sender },{'$set': {'last_send_date': datetime.now()}})
     send_email(sender, confirmation)
     payout_user(sender)
@@ -331,3 +318,4 @@ def send_email(receiver_email, content):
         server.login(EMAIL, PASSWORD)
         server.sendmail(EMAIL, receiver_email, content)
 
+cron_job()
