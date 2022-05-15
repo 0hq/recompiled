@@ -7,7 +7,9 @@ Python 3.6 or newer required.
 """
 import json
 import os
-
+import email
+import smtplib, ssl
+import imaplib
 import stripe
 import smtplib
 from datetime import datetime
@@ -16,6 +18,12 @@ from flask import Flask, jsonify, render_template, redirect, request, session, s
 from pymongo import MongoClient
 load_dotenv(find_dotenv())
 
+EMAIL = os.getenv('EMAIL')
+PASSWORD = os.getenv('PASSWORD')
+IMAP_SERVER = os.getenv('IMAP_SERVER')
+SMTP_SERVER = os.getenv('SMTP_SERVER')
+PORT = 465  # For SSL
+
 from magic_admin import Magic
 magic = Magic()
 
@@ -23,8 +31,7 @@ magic = Magic()
 from pprint import pprint
 # # connect to MongoDB, change the << MONGODB URL >> to reflect your own connection string
 url = os.getenv('MONGO_URL')
-client = MongoClient("mongodb+srv://server:Pfi88XLO8TrqSgqY@cluster0.ztv48.mongodb.net/Main?retryWrites=true&w=majority"
-)
+client = MongoClient("mongodb+srv://server:Pfi88XLO8TrqSgqY@cluster0.ztv48.mongodb.net/Main?retryWrites=true&w=majority")
 # db = client["Writers"]
 # Issue the serverStatus command and print the results
 # serverStatusResult=db.command("serverStatus")
@@ -120,6 +127,18 @@ def get_checkout_session():
     checkout_session = stripe.checkout.Session.retrieve(id)
     return jsonify(checkout_session)
 
+# Fetch the Checkout Session to display the JSON result on the success page
+@app.route('/deny-request', methods=['POST'])
+def deny_request():
+    secret_code = request.form.get('secret_code')
+    email = request.form.get('writer_email')
+    r = main_db.Writers.find_one({ "email": email, "secret_code": secret_code})
+    if (r):
+        main_db.Writers.update_one({'email': email },{'$set': {'expired': True}})
+        deny_email(email, r["genesis_inviter"])
+        return jsonify({'status': 'success'})
+    else:
+        return jsonify({'status': 'fail'})
 
 @app.route('/create-checkout-session', methods=['POST'])
 def create_checkout_session():
@@ -212,80 +231,156 @@ def webhook_received():
         account_email = x.email
         r = main_db.Writers.find_one({ "email": account_email })
         if r:
-            send_creation_confirmation_email()
-            notify_subscribers_acceptance()
+            acceptance_email(account_email, r["subscribers"][0])
             transfer_five_dollars()
         else:
             return "No writer invite existed"
 
     if event_type == 'checkout.session.completed':
         # checkout_session = stripe.checkout.Session.retrieve(id)
+        writer = x.metadata.writer
+        requester = x.customer_details.email
+        requester_data = x.customer_details
         print(x)
-        if not x.metadata.writer:
+        if not writer:
             return "Misformed data"
         
-        r = main_db.Writers.find_one({ "email": x.metadata.writer })
+        r = main_db.Writers.find_one({ "email": writer })
         if r:
-            new_sub = {}
-            main_db.Writers.update_one({'email': x.metadata.writer },{'$push': {'subscribers': new_sub}})
-            send_new_sub_email()
+            new_sub = {
+                "name": requester_data.name,
+                "email": requester,
+                "subscriber_since": datetime.now().replace(microsecond=0),
+                "customer_id": x.id,
+                "transaction_id": x.payment_intent
+            }
+            main_db.Writers.update_one({'email': writer },{'$push': {'subscribers': new_sub}})
+            send_new_sub_email(writer, requester)
         else:
             db_entry = {
-                "email": x.metadata.writer,
+                "email": writer,
                 "description": x.metadata.desc,
-                "genesis_inviter": x.customer_details.email,
+                "genesis_inviter": requester,
                 "start_date": datetime.now().replace(microsecond=0),
                 "strikes":[],
                 "accepted": false,
                 "subscribers":[
                     {
-                        "name":x.customer_details.name,
-                        "email":x.customer_details.email,
+                        "name": requester_data.name,
+                        "email": requester,
                         "subscriber_since":datetime.now().replace(microsecond=0),
-                        "customer_id":x.id,
+                        "customer_id": x.id,
                         "transaction_id": x.payment_intent
                     }
                 ]
             }
             print(db_entry)
             main_db.Writers.insert_one(db_entry)
-            send_request_email()
-            send_request_confirmation_email()
+            send_request_email(writer, requester)
         
         print('🔔 Payment succeeded!')
 
     return jsonify({'status': 'success'})
 
 # sends email to writer asking for confirmation.
-def send_request_email():
-    print ("(send_request_email)")
+def send_request_email(writer, requester):
+    print ("(send_request_email)", writer, requester)
+    writer_content = f'''\
+        Subject: Someone wants to pay you $5/month to write!
+
+        We just got an email from you to dispatch at Recompiled but it didn't look right. Double check that you included your writer code (you can check on our website) or that you sent from the right email account.
+
+        If this wasn't you, reply to this email and we'll make sure your account is secure.
+
+        Have a nice day!
+        - Will DePue
+    '''
+    requester_content = f'''\
+        Subject: Your request to {writer} has been sent.
+
+        This is an email confirming your request to {writer} - they'll have 7 days to accept before this subscription is canceled and you are refunded.
+
+        Have a nice day!
+        - Will DePue
+    '''    
+    send_email(writer, writer_content) 
+    send_email(requester, requester_content) 
 
 def transfer_five_dollars():
+    # stripe send five dollars to the user
     print ("(transfer_five_dollars)")
 
-def send_creation_confirmation_email():
-    print ("(send_creation_confirmation_email)")
+def deny_email(writer, requester):
+    print ("(acceptance_email)", writer, requester)
+    writer_content = f'''\
+        Subject: You've accepted the invitation to write each month.
 
-def notify_subscribers_acceptance():
-    print ("(notify_subscribers_acceptance)")
+        Thanks for accepting your invitation to write updates each month. As a reminder: You'll have to send an email to dispatch@recompiled.fyi any time each month to get paid out your 5$/subscriber/month. We're sending you $5 right now in advance of your first post, to prove we're not kidding. 
 
-def send_request_confirmation_email():
-    print ("(send_request_confirmation_emails)")
+        For more info, please access the panel at recompiled.fyi to manage your account and see more details.
 
-def send_new_sub_emails():
-    print ("(send_new_sub_emails)")
+        Have a nice day!
+        - Will DePue
+    '''
+    requester_content = f'''\
+        Subject: Your request to {writer} has been accepted!
 
-# runs every 4 hours
-def cron_job():
-    check_invite_expiry()
-    check_update_lapse()
-    check_payout()
+        {writer} has accepted your request to write each month. You'll be supporting their work for $5 and you can unsubscribe at any time @ recompiled.fyi. Thank you so much!
 
-def check_invite_expiry():
-    print ("check_invite_expiry")
+        Have a nice day :)
+        - Will DePue
+    '''    
+    send_email(writer, writer_content) 
+    send_email(requester, requester_content) 
 
-def check_update_lapse():
-    print ("check_update_lapse")
+def acceptance_email(writer, requester):
+    print ("(acceptance_email)", writer, requester)
+    writer_content = f'''\
+        Subject: You've accepted the invitation to write each month.
+
+        Thanks for accepting your invitation to write updates each month. As a reminder: You'll have to send an email to dispatch@recompiled.fyi any time each month to get paid out your 5$/subscriber/month. We're sending you $5 right now in advance of your first post, to prove we're not kidding. 
+
+        For more info, please access the panel at recompiled.fyi to manage your account and see more details.
+
+        Have a nice day!
+        - Will DePue
+    '''
+    requester_content = f'''\
+        Subject: Your request to {writer} has been accepted!
+
+        {writer} has accepted your request to write each month. You'll be supporting their work for $5 and you can unsubscribe at any time @ recompiled.fyi. Thank you so much!
+
+        Have a nice day :)
+        - Will DePue
+    '''    
+    send_email(writer, writer_content) 
+    send_email(requester, requester_content) 
+    
+
+def send_new_sub_emails(writer, sub):
+    print ("(send_new_sub_emails)", writer, sub)
+    sub_content = f'''\
+        Subject: You just subscribed to {writer}'s monthly letter.
+
+        Your payment has succeeded and you'll now receive monthly letters from {writer}. You're currently supporting their work for $5 and you can unsubscribe at any time @ recompiled.fyi.
+        Have a nice day!
+        - Will DePue
+    '''
+    writer_content = f'''\
+        Subject: You just got a new subscriber!
+
+        Someone just signed up for a $5/month subscription from an email @ {sub}. Congratulations, keep up the good work :)
+
+        Have a nice day!
+        - Will DePue
+    '''
+    send_email(writer, writer_content) 
+    send_email(sub, sub_content) 
+
+def send_email(receiver_email, content):
+    with smtplib.SMTP_SSL(SMTP_SERVER, PORT, context=context) as server:
+        server.login(EMAIL, PASSWORD)
+        server.sendmail(EMAIL, receiver_email, content)
 
 if __name__== '__main__':
     app.run(port=4242)

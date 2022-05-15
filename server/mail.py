@@ -3,7 +3,6 @@ import email
 import smtplib, ssl
 import imaplib
 import json
-import smtplib, ssl
 import time, threading
 import dateutil.parser
 from pymongo import MongoClient
