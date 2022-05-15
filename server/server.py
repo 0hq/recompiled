@@ -9,10 +9,15 @@ import json
 import os
 
 import stripe
+import smtplib
 from datetime import datetime
 from dotenv import load_dotenv, find_dotenv
 from flask import Flask, jsonify, render_template, redirect, request, session, send_from_directory
 from pymongo import MongoClient
+load_dotenv(find_dotenv())
+
+from magic_admin import Magic
+magic = Magic()
 
 # pprint library is used to make the output look more pretty
 from pprint import pprint
@@ -30,7 +35,6 @@ for r in test:
     print(r)
 
 # Setup Stripe python client library
-load_dotenv(find_dotenv())
 stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
 stripe.api_version = os.getenv('STRIPE_API_VERSION', '2019-12-03')
 
@@ -46,6 +50,18 @@ app.secret_key = b'_5#y2L"F4Q8z\n\xec]/'
 def get_register():
     return render_template('register.html')
 
+@app.route('/login', methods=['GET'])
+def get_login():
+    return render_template('login.html')
+
+@app.route('/requestThatNeedsAuth', methods=['GET'])
+def requestThatNeedsAuth():
+    print(request.args.get('id'))
+    try:
+        magic.Token.validate(request.args.get('id'))
+        return 'true'
+    except:
+        return 'false'
 
 @app.route('/onboard-user', methods=['POST'])
 def onboard_user():
@@ -148,7 +164,6 @@ def create_checkout_session():
     except Exception as e:
         return jsonify({'error': {'message': str(e)}}), 400
 
-
 @app.route('/customer-portal', methods=['POST'])
 def customer_portal():
     # For demonstration purposes, we're using the Checkout session to retrieve the customer ID.
@@ -188,32 +203,55 @@ def webhook_received():
     else:
         data = request_data['data']
         event_type = request_data['type']
-    data_object = data['object']
+    x = data['object']
 
     print('event ' + event_type)
 
+    # fix this
+    if event_type == 'account.session.completed':
+        account_email = x.email
+        r = main_db.Writers.find_one({ "email": account_email })
+        if r:
+            send_creation_confirmation_email()
+            notify_subscribers_acceptance()
+            transfer_five_dollars()
+        else:
+            return "No writer invite existed"
+
     if event_type == 'checkout.session.completed':
         # checkout_session = stripe.checkout.Session.retrieve(id)
-        print(data, request_data)
-        db_entry = {
-            "email": data.writer,
-            "genesis_inviter": data.customer_details.email,
-            "start_date": datetime.now().replace(microsecond=0),
-            "strikes":[],
-            "subscribers":[
-                {
-                    "name":data.customer_details.name,
-                    "email":data.customer_details.email,
-                    "subscriber_since":datetime.now().replace(microsecond=0),
-                    "customer_id":data.id,
-                    "transaction_id": data.payment_intent
-                }
-            ]
-        }
-        print(db_entry)
-        main_db.Writers.insert_one(new_db_entry)
-        send_request_email()
-        # sets cron job to refund and alert if not accepted in one week
+        print(x)
+        if not x.metadata.writer:
+            return "Misformed data"
+        
+        r = main_db.Writers.find_one({ "email": x.metadata.writer })
+        if r:
+            new_sub = {}
+            main_db.Writers.update_one({'email': x.metadata.writer },{'$push': {'subscribers': new_sub}})
+            send_new_sub_email()
+        else:
+            db_entry = {
+                "email": x.metadata.writer,
+                "description": x.metadata.desc,
+                "genesis_inviter": x.customer_details.email,
+                "start_date": datetime.now().replace(microsecond=0),
+                "strikes":[],
+                "accepted": false,
+                "subscribers":[
+                    {
+                        "name":x.customer_details.name,
+                        "email":x.customer_details.email,
+                        "subscriber_since":datetime.now().replace(microsecond=0),
+                        "customer_id":x.id,
+                        "transaction_id": x.payment_intent
+                    }
+                ]
+            }
+            print(db_entry)
+            main_db.Writers.insert_one(db_entry)
+            send_request_email()
+            send_request_confirmation_email()
+        
         print('🔔 Payment succeeded!')
 
     return jsonify({'status': 'success'})
@@ -221,6 +259,33 @@ def webhook_received():
 # sends email to writer asking for confirmation.
 def send_request_email():
     print ("(send_request_email)")
+
+def transfer_five_dollars():
+    print ("(transfer_five_dollars)")
+
+def send_creation_confirmation_email():
+    print ("(send_creation_confirmation_email)")
+
+def notify_subscribers_acceptance():
+    print ("(notify_subscribers_acceptance)")
+
+def send_request_confirmation_email():
+    print ("(send_request_confirmation_emails)")
+
+def send_new_sub_emails():
+    print ("(send_new_sub_emails)")
+
+# runs every 4 hours
+def cron_job():
+    check_invite_expiry()
+    check_update_lapse()
+    check_payout()
+
+def check_invite_expiry():
+    print ("check_invite_expiry")
+
+def check_update_lapse():
+    print ("check_update_lapse")
 
 if __name__== '__main__':
     app.run(port=4242)
