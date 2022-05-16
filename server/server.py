@@ -12,6 +12,8 @@ import smtplib, ssl
 import imaplib
 import stripe
 import smtplib
+import random
+import math
 from datetime import datetime
 from dotenv import load_dotenv, find_dotenv
 from flask import Flask, jsonify, render_template, redirect, request, session, send_from_directory
@@ -37,6 +39,7 @@ client = MongoClient("mongodb+srv://server:Pfi88XLO8TrqSgqY@cluster0.ztv48.mongo
 # serverStatusResult=db.command("serverStatus")
 test = client.Main.Writers.find()
 main_db = client.Main
+wdb = main_db.Writers
 # print(test)
 for r in test:
     print(r)
@@ -63,12 +66,77 @@ def get_login():
 
 @app.route('/requestThatNeedsAuth', methods=['GET'])
 def requestThatNeedsAuth():
-    print(request.args.get('id'))
+    id = request.args.get('id')
+    print(id)
     try:
-        magic.Token.validate(request.args.get('id'))
+        magic.Token.validate(id)
         return 'true'
     except:
-        return 'false'
+        return jsonify("Invalid token"), 401
+
+@app.route('/get_user', methods=['GET'])
+def get_user():
+    id = request.args.get('id')
+    print(id)
+    try:
+        magic.Token.validate(id)
+        issuer = magic.Token.getIssuer(id)
+    except:
+        return jsonify("Invalid token"), 401
+
+    user_subs = wdb.find(
+            {"subscribers": {"$elemMatch": { "magic_id": issuer }}},  
+            { "subscribers": 0 })
+    return jsonify(user_subs)
+
+@app.route('/cancel_sub', methods=['GET'])
+def cancel_sub():
+    id = request.args.get('id')
+    writer = request.args.get('writer')
+    print(id)
+    try:
+        magic.Token.validate(id)
+        issuer = magic.Token.getIssuer(id)
+        user_info = magic.User.get_metadata_by_issuer(issuer).data
+    except:
+        return jsonify("Invalid token"), 401
+
+    wdb.update_one(
+            {"email": writer },  
+            { "$pull": {"subscribers": { "magic_id": issuer }} })
+    cancel_email(writer, user_info["email"])
+    # cancel user subscription
+    return jsonify("success")
+
+@app.route('/old_cancel_writer', methods=['GET'])
+def old_cancel_writer():
+    id = request.args.get('id')
+    print(id)
+    try:
+        magic.Token.validate(id)
+        issuer = magic.Token.getIssuer(id)
+        user_info = magic.User.get_metadata_by_issuer(issuer).data
+    except:
+        return jsonify("Invalid token"), 401
+
+    w = wdb.find_one_and_update({'email': user_info["email"] },{'$set': {'expired': True}})
+    cancel_writer_email(writer, w["subscribers"])
+    # cancel user subscriptions
+    return jsonify("success")
+
+# Fetch the Checkout Session to display the JSON result on the success page
+@app.route('/cancel_writer', methods=['GET'])
+def cancel_writer():
+    secret_code = request.args.get('secret_code')
+    email = request.args.get('writer_email')
+    r = wdb.find_one({ "email": email, "secret_code": secret_code})
+    if r:
+        wdb.update_one({'email': email },{'$set': {'expired': True}})
+        cancel_writer_email(writer, r["subscribers"])
+        # cancel user subscriptions
+        return jsonify({'status': 'success'})
+    else:
+        return jsonify({'status': 'fail'})
 
 @app.route('/onboard-user', methods=['POST'])
 def onboard_user():
@@ -82,7 +150,6 @@ def onboard_user():
         return jsonify({'url': account_link_url})
     except Exception as e:
         return jsonify(error=str(e)), 403
-
 
 @app.route('/onboard-user/refresh', methods=['GET'])
 def onboard_user_refresh():
@@ -110,6 +177,13 @@ def _generate_account_link(account_id, origin):
 def get_example():
     return render_template('index.html')
 
+@app.route('/get-writers', methods=['GET'])
+def get_writers():
+    ws = wdb.find({}, { "email": 1, "name": 1, "desc": 1, "subscribers": 1 })
+    for w, i in enumerate(ws)
+        w["subscribers"] = len(w["subscribers"])
+        ws[i] = w
+    return ws
 
 @app.route('/config', methods=['GET'])
 def get_publishable_key():
@@ -119,7 +193,6 @@ def get_publishable_key():
         'proPrice': "price_1Kx1ECEDdGyhVvwd5Q0BTcOX"
     })
 
-
 # Fetch the Checkout Session to display the JSON result on the success page
 @app.route('/checkout-session', methods=['GET'])
 def get_checkout_session():
@@ -128,21 +201,28 @@ def get_checkout_session():
     return jsonify(checkout_session)
 
 # Fetch the Checkout Session to display the JSON result on the success page
-@app.route('/deny-request', methods=['POST'])
+@app.route('/request', methods=['GET'])
 def deny_request():
-    secret_code = request.form.get('secret_code')
-    email = request.form.get('writer_email')
-    r = main_db.Writers.find_one({ "email": email, "secret_code": secret_code})
-    if (r):
-        main_db.Writers.update_one({'email': email },{'$set': {'expired': True}})
+    secret_code = request.args.get('secret_code')
+    email = request.args.get('writer_email')
+    return render_template('index.html') # request.html
+
+# Fetch the Checkout Session to display the JSON result on the success page
+@app.route('/deny-request', methods=['GET'])
+def deny_request():
+    secret_code = request.args.get('secret_code')
+    email = request.args.get('writer_email')
+    r = wdb.find_one({ "email": email, "secret_code": secret_code})
+    if r:
+        wdb.update_one({'email': email },{'$set': {'expired': True}})
         deny_email(email, r["genesis_inviter"])
         return jsonify({'status': 'success'})
     else:
         return jsonify({'status': 'fail'})
 
+
 @app.route('/create-checkout-session', methods=['POST'])
 def create_checkout_session():
-    print(request.form)
     price = request.form.get('priceId')
     writer = request.form.get('writerEmail')
     desc = request.form.get('descText')
@@ -229,7 +309,7 @@ def webhook_received():
     # fix this
     if event_type == 'account.session.completed':
         account_email = x.email
-        r = main_db.Writers.find_one({ "email": account_email })
+        r = wdb.find_one({ "email": account_email })
         if r:
             acceptance_email(account_email, r["subscribers"][0])
             transfer_five_dollars()
@@ -238,14 +318,16 @@ def webhook_received():
 
     if event_type == 'checkout.session.completed':
         # checkout_session = stripe.checkout.Session.retrieve(id)
+        meta = x.metadata
         writer = x.metadata.writer
         requester = x.customer_details.email
         requester_data = x.customer_details
+        secret_code = random.random() * 10 ** 8
         print(x)
         if not writer:
             return "Misformed data"
         
-        r = main_db.Writers.find_one({ "email": writer })
+        r = wdb.find_one({ "email": writer })
         if r:
             new_sub = {
                 "name": requester_data.name,
@@ -254,12 +336,12 @@ def webhook_received():
                 "customer_id": x.id,
                 "transaction_id": x.payment_intent
             }
-            main_db.Writers.update_one({'email': writer },{'$push': {'subscribers': new_sub}})
+            wdb.update_one({'email': writer },{'$push': {'subscribers': new_sub}})
             send_new_sub_email(writer, requester)
         else:
             db_entry = {
                 "email": writer,
-                "description": x.metadata.desc,
+                "description": meta.desc,
                 "genesis_inviter": requester,
                 "start_date": datetime.now().replace(microsecond=0),
                 "strikes":[],
@@ -275,22 +357,24 @@ def webhook_received():
                 ]
             }
             print(db_entry)
-            main_db.Writers.insert_one(db_entry)
-            send_request_email(writer, requester)
+            wdb.insert_one(db_entry)
+            send_request_email(writer, requester, meta.desc, secret_code)
         
         print('🔔 Payment succeeded!')
 
     return jsonify({'status': 'success'})
 
 # sends email to writer asking for confirmation.
-def send_request_email(writer, requester):
+def send_request_email(writer, requester, desc, code):
     print ("(send_request_email)", writer, requester)
     writer_content = f'''\
         Subject: Someone wants to pay you $5/month to write!
 
-        We just got an email from you to dispatch at Recompiled but it didn't look right. Double check that you included your writer code (you can check on our website) or that you sent from the right email account.
+        {requester} has requested you to start a monthly newsletter on specific topic. If you accept, you'll get $5/month per subscriber that signs up, all you have to do is send an email newsletter every month, covering "{desc}".
 
-        If this wasn't you, reply to this email and we'll make sure your account is secure.
+        If you're interested in learning more, head to https://recompiled.fyi/request?writer={writer}&code={code}
+
+        If you're not interested, feel free to deny this request by clicking here: https://recompiled.fyi/deny-request?writer={writer}&code={code}
 
         Have a nice day!
         - Will DePue
@@ -310,14 +394,16 @@ def transfer_five_dollars():
     # stripe send five dollars to the user
     print ("(transfer_five_dollars)")
 
-def deny_email(writer, requester):
+def accept_email(writer, requester):
     print ("(acceptance_email)", writer, requester)
     writer_content = f'''\
         Subject: You've accepted the invitation to write each month.
 
         Thanks for accepting your invitation to write updates each month. As a reminder: You'll have to send an email to dispatch@recompiled.fyi any time each month to get paid out your 5$/subscriber/month. We're sending you $5 right now in advance of your first post, to prove we're not kidding. 
 
-        For more info, please access the panel at recompiled.fyi to manage your account and see more details.
+        It would be best to send your genesis update soon, as it's really helpful for people to get a hang of what you'll be writing about early on after they subscribed. You can do that by sending to dispatch@recompiled.fyi or follow the detailed instrucations on the site.
+
+        For more info, please access the panel at recompiled.fyi to manage your account and see more details. Be sure to remember to send your update this month!
 
         Have a nice day!
         - Will DePue
@@ -333,22 +419,20 @@ def deny_email(writer, requester):
     send_email(writer, writer_content) 
     send_email(requester, requester_content) 
 
-def acceptance_email(writer, requester):
+def deny_email(writer, requester):
     print ("(acceptance_email)", writer, requester)
     writer_content = f'''\
-        Subject: You've accepted the invitation to write each month.
+        Subject: You've denied the invitation to write each month.
 
-        Thanks for accepting your invitation to write updates each month. As a reminder: You'll have to send an email to dispatch@recompiled.fyi any time each month to get paid out your 5$/subscriber/month. We're sending you $5 right now in advance of your first post, to prove we're not kidding. 
-
-        For more info, please access the panel at recompiled.fyi to manage your account and see more details.
+        You've succesfully denied the request from {requester}, if this was an error be sure to reach out to them to create a new request.
 
         Have a nice day!
         - Will DePue
     '''
     requester_content = f'''\
-        Subject: Your request to {writer} has been accepted!
+        Subject: Your request to {writer} has been denied :(
 
-        {writer} has accepted your request to write each month. You'll be supporting their work for $5 and you can unsubscribe at any time @ recompiled.fyi. Thank you so much!
+        {writer} has denied your request to write each month. Feel free to reach out to them and talk, but you'll have to create another request in order to start again. You can do that at recompiled.fyi at any time.
 
         Have a nice day :)
         - Will DePue
@@ -356,6 +440,49 @@ def acceptance_email(writer, requester):
     send_email(writer, writer_content) 
     send_email(requester, requester_content) 
     
+
+def cancel_email(writer, sub):
+    print ("(send_new_sub_emails)", writer, sub)
+    sub_content = f'''\
+        Subject: You just canceled your subscription to {writer}'s monthly letter.
+
+        Your cancelation has succeeded and you'll no longer receive monthly letters from {writer}. If this was a mistake, feel free to re-subscribe at recompiled.fyi.
+
+        Have a nice day!
+        - Will DePue
+    '''
+    writer_content = f'''\
+        Subject: You just lost a subscriber.
+
+        {sub} has canceled their subscription.
+
+        Have a nice day!
+        - Will DePue
+    '''
+    send_email(writer, writer_content) 
+    send_email(sub, sub_content) 
+
+def cancel_writer_email(writer, subs):
+    inviter_content = f'''\
+        Subject: A subscription of yours has ended.
+
+        {writer} has canceled their monthly letter. This subscription has been permanently expired.
+
+        Have a nice day!
+        - Will DePue
+    '''
+    writer_content = f'''\
+        Subject: Your monthly letter has been removed.
+
+        You've successfully canceled your monthly letter. This subscription will be permanently expired. You can always restart this subscription by asking a subscriber to issue a new invite or by signing up again at recompiled.fyi.
+
+        Have a nice day!
+        - Will DePue
+    '''
+    send_email(writer, writer_content) 
+    for s in subs:
+        send_email(s["email"], inviter_content)
+    cancel_vendor_account(writer)
 
 def send_new_sub_emails(writer, sub):
     print ("(send_new_sub_emails)", writer, sub)

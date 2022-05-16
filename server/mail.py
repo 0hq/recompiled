@@ -233,16 +233,16 @@ def warning_email(writer, subs):
     
 def expire_subscription(writer, subs):
     inviter_content = f'''\
-        Subject: Alert: Your subscription has been removed.
+        Subject: Your subscription has been removed.
 
         Alert:
-        {writer} has missed their writing period two months in a row. This subscribtion has been permanently expired. You can always restart this subscription by creating a new invite and subscribtion at recompiled.fyi.
+        {writer} has missed their writing period two months in a row. This subscription has been permanently expired. You can always restart this subscription by creating a new invite and subscription at recompiled.fyi.
 
         Have a nice day!
         - Will DePue
     '''
     writer_content = f'''\
-        Subject: Alert: Your subscription has been removed.
+        Subject: Your subscription has been removed.
 
         Alert:
         You've missed two monthly writing periods in a row. This subscription will be permanently expired. You can always restart this subscription by asking a subscriber to issue a new invite or by signing up again at recompiled.fyi.
@@ -253,8 +253,8 @@ def expire_subscription(writer, subs):
     send_email(writer, writer_content) 
     for s in subs:
         send_email(s["email"], inviter_content)
-    wdb.update_one({'email': sender },{'$set': {'expired': True}})
-    cancel_vendor_account(sender)
+    wdb.update_one({'email': writer },{'$set': {'expired': True}})
+    cancel_vendor_account(writer)
 
 def check_code(code, sender):
     print("check_code", code, sender)
