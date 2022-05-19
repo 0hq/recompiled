@@ -70,7 +70,7 @@
 
         const authenticate = async () => {
             var xmlHttp = new XMLHttpRequest();
-            xmlHttp.open( "GET", "/requestThatNeedsAuth?id=" + await magic.user.getIdToken({ lifespan: 9000 }), false );
+            xmlHttp.open( "GET", "/get-user?id=" + await magic.user.getIdToken({ lifespan: 9000 }), false );
             xmlHttp.send( null );
             return xmlHttp.responseText;
         }
