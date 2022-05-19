@@ -6,6 +6,7 @@ Will DePue
 Python 3.6 or newer required.
 """
 import json
+import mail
 import os
 import email
 import smtplib, ssl
