@@ -9,41 +9,42 @@
     <link rel="stylesheet" href="css/global.css" />
     <!-- Load Stripe.js on your website. -->
     <style>
-        html, body {
-            align-items: center;
-            text-align: center;
-            padding: 20px;
-        }
+      html,
+      body {
+        align-items: center;
+        text-align: center;
+        padding: 20px;
+      }
     </style>
     <script src="https://auth.magic.link/sdk"></script>
     <script>
-        /* 2️⃣ Initialize Magic Instance */
-        let magic = new Magic("pk_live_6BA4B60F2C6A364C");
-  
-        /* 3️⃣ Implement Render Function */
-        const render = async () => {
-          let html = '';
-  
-          if (window.location.pathname === "/callback") {
-            try {
-              /* Complete the "authentication callback" */
-              await magic.auth.loginWithCredential();
-  
-              /* Get user metadata including email */
-              const userMetadata = await magic.user.getMetadata();
-  
-              html = `
+      /* 2️⃣ Initialize Magic Instance */
+      let magic = new Magic("pk_live_6BA4B60F2C6A364C");
+
+      /* 3️⃣ Implement Render Function */
+      const render = async () => {
+        let html = "";
+
+        if (window.location.pathname === "/callback") {
+          try {
+            /* Complete the "authentication callback" */
+            await magic.auth.loginWithCredential();
+
+            /* Get user metadata including email */
+            const userMetadata = await magic.user.getMetadata();
+
+            html = `
                 <h1>Current user: ${userMetadata.email}</h1>
                 <button onclick="handleLogout()">Logout</button>
               `;
-            } catch {
-              window.location.href = window.location.origin;
-            }
-          } else {
-            const isLoggedIn = await magic.user.isLoggedIn();
-  
-            /* Show login form if user is not logged in */
-            html = `
+          } catch {
+            window.location.href = window.location.origin;
+          }
+        } else {
+          const isLoggedIn = await magic.user.isLoggedIn();
+
+          /* Show login form if user is not logged in */
+          html = `
               <h1>Please sign up or login</h1>
               <form onsubmit="handleLogin(event)">
                 <input type="email" name="email" required="required" placeholder="Enter your email" />
@@ -51,52 +52,52 @@
               </form>
               
             `;
-  
-            if (isLoggedIn) {
-              /* Get user metadata including email */
-              const userMetadata = await magic.user.getMetadata();
-              html = `
+
+          if (isLoggedIn) {
+            /* Get user metadata including email */
+            const userMetadata = await magic.user.getMetadata();
+            html = `
                 <h1>Current user: ${userMetadata.email}</h1>
                 <button style="margin: auto" onclick="authenticate()">Request something that needs auth</button>
                 <button onclick="handleLogout()">Logout</button>
               `;
-            }
           }
-
-          
-  
-          document.getElementById("app").innerHTML = html;
-        };
-
-        const authenticate = async () => {
-            var xmlHttp = new XMLHttpRequest();
-            xmlHttp.open( "GET", "/get-user?id=" + await magic.user.getIdToken({ lifespan: 9000 }), false );
-            xmlHttp.send( null );
-            return xmlHttp.responseText;
         }
-  
-        /* 4️⃣ Implement Login Handler */
-        const handleLogin = async (e) => {
-          e.preventDefault();
-          const email = new FormData(e.target).get("email");
+
+        document.getElementById("app").innerHTML = html;
+      };
+
+      const authenticate = async () => {
+        var xmlHttp = new XMLHttpRequest();
+        xmlHttp.open(
+          "GET",
+          "/get-user?id=" + (await magic.user.getIdToken({ lifespan: 9000 })),
+          false
+        );
+        xmlHttp.send(null);
+        return xmlHttp.responseText;
+      };
+
+      /* 4️⃣ Implement Login Handler */
+      const handleLogin = async (e) => {
+        e.preventDefault();
+        const email = new FormData(e.target).get("email");
         //   const redirectURI = `http://127.0.0.1:4242/callback`;
-          if (email) {
-            /* One-liner login 🤯 */
-            await magic.auth.loginWithMagicLink({ email });
-            render();
-          }
-        };
-  
-        /* 5️⃣ Implement Logout Handler */
-        const handleLogout = async () => {
-          await magic.user.logout();
-          render();
-        };
-      </script>
+        if (email) {
+          /* One-liner login 🤯 */
+          await magic.auth.loginWithMagicLink({ email });
+          // render();
+        }
+      };
+
+      /* 5️⃣ Implement Logout Handler */
+      const handleLogout = async () => {
+        await magic.user.logout();
+        render();
+      };
+    </script>
   </head>
   <body onload="render()">
-    <div id="app">
-      Loading...
-    </div>
+    <div id="app">Loading...</div>
   </body>
 </html>

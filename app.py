@@ -143,10 +143,10 @@ def customer_portal():
 
 @app.route('/create-checkout-session', methods=['POST'])
 def create_checkout_session():
-    price = request.form.get('priceId')
     writer = request.form.get('writerEmail')
     desc = request.form.get('descText')
-    print(price, writer, desc)
+    requestBool = request.form.get('requestBool')
+    print(writer, desc)
     domain_url = os.getenv('DOMAIN')
 
     try:
@@ -162,12 +162,13 @@ def create_checkout_session():
         meta = {
             'writer': writer,
             'desc': desc,
+            'requestBool': requestBool == 'true'
         }
         now = datetime.now()
         trial = (now + timedelta(days=8))
         checkout_session = stripe.checkout.Session.create(
             success_url=domain_url + '/success.html?session_id={CHECKOUT_SESSION_ID}',
-            cancel_url=domain_url + '/canceled.html',
+            cancel_url=domain_url + '/failure.html',
             mode='subscription',
             # automatic_tax={'enabled': True},
             metadata=meta,
@@ -231,6 +232,7 @@ def webhook_received():
         print(x)
         writer = x.metadata.writer
         desc = x.metadata.desc
+        requestBool = x.metadata.requestBool
         requester = x.customer_details.email
         name = x.customer_details.name
         secret_code = str(int(random.random() * 10 ** 8))
@@ -238,7 +240,7 @@ def webhook_received():
             return "Misformed data"
         
         r = wdb.find_one({ "email": writer, 'accepted': True, 'expired': False })
-        if r:
+        if r and not requestBool:
             new_sub = {
                 "name": name,
                 "email": requester,
@@ -248,7 +250,7 @@ def webhook_received():
             }
             wdb.update_one({'email': writer },{'$push': {'subscribers': new_sub}})
             send_new_sub_emails(writer, requester)
-        else:
+        elif requestBool and not r:
             db_entry = {
                 "name": "",
                 "genesis_inviter": requester,
@@ -305,6 +307,20 @@ def get_user():
             {"subscribers": {"$elemMatch": { "email": user_info["email"]}}},  
             { "subscribers": 0 })
     return j(o(user_subs))
+
+@app.route('/get-writer', methods=['GET'])
+def get_writer():
+    id = request.args.get('id')
+    print(id)
+    try:
+        magic.Token.validate(id)
+        issuer = magic.Token.get_issuer(id)
+        user_info = magic.User.get_metadata_by_issuer(issuer).data
+    except:
+        return j("Invalid token"), 401
+
+    writer = wdb.find_one({ "email": user_info["email"], 'accepted': True, 'expired': False })
+    return j(o(writer))
 
 @app.route('/cancel-sub', methods=['GET'])
 def cancel_sub():
