@@ -11,7 +11,6 @@ import email
 import smtplib, ssl
 import imaplib
 from traceback import print_tb
-import stripe
 import smtplib
 import random
 import math
@@ -22,6 +21,8 @@ from datetime import datetime, timedelta
 from pymongo import MongoClient
 from dotenv import load_dotenv, find_dotenv
 from flask import Flask, jsonify as j, render_template, redirect, request, session, send_from_directory
+import stripe
+
 
 load_dotenv(find_dotenv())
 
