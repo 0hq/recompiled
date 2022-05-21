@@ -365,10 +365,11 @@ def deny_request():
 # DONE
 @app.route('/get-writers', methods=['GET'])
 def get_writers():
-    writers = wdb.find({}, { "email": 1, "name": 1, "desc": 1, "subscribers": 1 })
+    writers = wdb.find({"email" : { "$exists": True}}, { "email": 1, "name": 1, "desc": 1, "subscribers": 1 })
     print(writers)
     output = []
     for writer in writers:
+        # print(writer)
         writer["subscribers"] = len(writer["subscribers"])
         output.append(writer)
     return j(o(output))
