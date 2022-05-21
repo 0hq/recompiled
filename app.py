@@ -22,6 +22,8 @@ from pymongo import MongoClient
 from dotenv import load_dotenv, find_dotenv
 from flask import Flask, jsonify as j, render_template, redirect, request, session, send_from_directory
 import stripe
+from flask_cors import CORS
+
 
 
 load_dotenv(find_dotenv())
@@ -44,6 +46,7 @@ static_dir = str(os.path.abspath(os.path.join(__file__ , "..", os.getenv("STATIC
 app = Flask(__name__, static_folder=static_dir,
             static_url_path="", template_folder=static_dir)
 app.secret_key = b'_5#y2L"F4Q8z\n\xec]/'
+CORS(app)
 
 def o(data):
     return json.loads(json_util.dumps(data))
