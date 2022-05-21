@@ -520,4 +520,4 @@ Have a nice day!
 # --------------------------- email stuff above -------
 
 if __name__== '__main__':
-    app.run(port=4242)
+    app.run()
