@@ -167,8 +167,8 @@ def create_checkout_session():
         now = datetime.now()
         trial = (now + timedelta(days=8))
         checkout_session = stripe.checkout.Session.create(
-            success_url=domain_url + '/success.html?session_id={CHECKOUT_SESSION_ID}',
-            cancel_url=domain_url + '/failure.html',
+            success_url=domain_url + '/success',
+            cancel_url=domain_url + '/failure',
             mode='subscription',
             # automatic_tax={'enabled': True},
             metadata=meta,
