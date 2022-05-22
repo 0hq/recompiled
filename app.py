@@ -151,8 +151,12 @@ def create_checkout_session():
     writer = request.form.get('writerEmail')
     desc = request.form.get('descText')
     requestBool = request.form.get('requestBool')
-    print(writer, desc)
     domain_url = os.getenv('DOMAIN')
+    print(writer, desc, requestBool, domain_url)
+
+    if not writer:
+        return j({'misformed': [ writer, desc, requestBool, domain_url]})
+
 
     try:
         # Create new Checkout Session for the order
