@@ -15,6 +15,7 @@ import smtplib
 import random
 import math
 from pprint import pprint
+from xmlrpc.client import Boolean
 from bson import json_util
 from magic_admin import Magic
 from datetime import datetime, timedelta
@@ -72,16 +73,20 @@ def onboard_user():
         type='express',
         metadata=save
     )
-    print(account)
+    print(account.metadata)
     # Store the account ID.
     session['account_id'] = account.id
-
-    origin = request.headers['origin']
-    account_link_url = _generate_account_link(account.id, origin)
-    try:
-        return j({'url': account_link_url})
-    except Exception as e:
-        return j(error=str(e)), 403
+    print(request.headers)
+    origin = request.headers.get('origin')
+    # print(origin, origin == '', Boolean(origin))
+    if origin:
+        account_link_url = _generate_account_link(account.id, origin)
+        print(account_link_url)
+        try:
+            return j({'url': account_link_url})
+        except Exception as e:
+            return j(error=str(e)), 403
+    return j({'status': "No origin url..."})
 
 @app.route('/onboard-user/refresh', methods=['GET'])
 def onboard_user_refresh():
