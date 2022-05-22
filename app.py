@@ -104,7 +104,7 @@ def _generate_account_link(account_id, origin):
         type='account_onboarding',
         account=account_id,
         refresh_url=f'{origin}/onboard-user/refresh',
-        return_url=f'{origin}/success.html',
+        return_url=f'{origin}/success-register',
     )
     return account_link.url
 
@@ -176,7 +176,7 @@ def create_checkout_session():
         now = datetime.now()
         trial = (now + timedelta(days=8))
         checkout_session = stripe.checkout.Session.create(
-            success_url=domain_url + '/success',
+            success_url=domain_url + '/success-checkout',
             cancel_url=domain_url + '/failure',
             mode='subscription',
             # automatic_tax={'enabled': True},
@@ -242,18 +242,17 @@ def webhook_received():
 
     if event_type == 'checkout.session.completed':
         print(x.metadata)
-        if not x.metadata.get('writer') or not x.metadata.get('desc'):
+        if not x.metadata.get('writer'):
             return "Metadata wrong"
         writer = x.metadata.writer
         desc = x.metadata.desc
-        requestBool = x.metadata.requestBool
+        requestBool = x.metadata.requestBool == "true"
         requester = x.customer_details.email
         name = x.customer_details.name
         secret_code = str(int(random.random() * 10 ** 8))
-        if not writer:
-            return "Misformed data"
         
         r = wdb.find_one({ "email": writer, 'accepted': True, 'expired': False })
+        print(r, requestBool, Boolean(r), Boolean(requestBool))
         if r and not requestBool:
             new_sub = {
                 "name": name,
@@ -262,6 +261,9 @@ def webhook_received():
                 "customer_id": x.id,
                 "transaction_id": x.subscription
             }
+            stripe.Subscription.modify(x.subscription,
+                    trial_end='now',
+                )
             wdb.update_one({'email': writer },{'$push': {'subscribers': new_sub}})
             send_new_sub_emails(writer, requester)
         elif requestBool and not r:
@@ -284,7 +286,7 @@ def webhook_received():
                 "accepted": False,
                 "expired": False,
                 "description": desc,
-                "last_send_date": "2000-01-01T08:00:00.000+00:00",
+                "last_send_date": datetime.now().replace(microsecond=0) - timedelta(weeks=52),
                 "account_id": ""
             }
             print(db_entry)
@@ -356,7 +358,10 @@ def cancel_sub():
             {"email": writer },  
             { "$pull": {"subscribers": { "email": user_info["email"]}} })
     cancel_email(writer, user_info["email"])
-    stripe.Subscription.delete(sub_id)
+    try:
+        stripe.Subscription.delete(sub_id)
+    except:
+        print("Failed to cancel sub for", sub_id)
     return j("success")
 
 
@@ -371,8 +376,10 @@ def cancel_writer():
         wdb.update_one({'email': email },{'$set': {'expired': True}})
         cancel_writer_email(email, r["subscribers"])
         for s in r["subscribers"]:
-            print(s["transaction_id"])
-            stripe.Subscription.delete(s["transaction_id"])
+            try:
+                stripe.Subscription.delete(s["transaction_id"])
+            except:
+                print("Failed to cancel sub for", s["transaction_id"])
         return render_template('sucessfulrequest.html')
     else:
         return render_template('somethingwentwrong.html')
@@ -392,8 +399,10 @@ def deny_request():
         wdb.update_one({'email': email },{'$set': {'expired': True}})
         deny_email(email, r["genesis_inviter"])
         for s in r["subscribers"]:
-            print(s["transaction_id"])
-            stripe.Subscription.delete(s["transaction_id"])
+            try:
+                stripe.Subscription.delete(s["transaction_id"])
+            except:
+                print("Failed to cancel sub for", s["transaction_id"])
         return render_template('sucessfulrequest.html')
     else:
         return render_template('somethingwentwrong.html')
@@ -401,7 +410,7 @@ def deny_request():
 # DONE
 @app.route('/get-writers', methods=['GET'])
 def get_writers():
-    writers = wdb.find({"email" : { "$exists": True}}, { "email": 1, "name": 1, "desc": 1, "subscribers": 1 })
+    writers = wdb.find({"email" : { "$exists": True}, "accepted": True, "expired": False }, { "email": 1, "description": 1, "subscribers": 1 })
     print(writers)
     output = []
     for writer in writers:

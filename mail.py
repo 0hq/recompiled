@@ -60,7 +60,6 @@ def send_email(receiver_email, content):
 
 def cron_job():
     search_unseen()
-    check_subscription_expiry()
     check_invite_expiry()
     check_payout_users()
  
@@ -73,12 +72,13 @@ def check_invite_expiry():
             print("Expire for", w["email"])
             expire_invite(w["email"], w["genesis_inviter"])
 
+# disabled
 def check_subscription_expiry():
     now = datetime.now()
     ws = wdb.find({ "accepted": True, "expired": False}) # gets all writers
     print("Check Subscription Expiry. Checking:", len(list(ws.clone())))
     for w in ws:
-        if w["last_send_date"] < (now - timedelta(days=30)):
+        if w["last_send_date"] < (a["last_paid"] -timedelta(days=30)):
             print("Strike for", w["email"])
             if get_strikes(w["strikes"]) == 0:
                 warning_email(w["email"], w["subscribers"])
@@ -158,17 +158,22 @@ def search_unseen():
                 print(f'From: {mail_from}')
                 print(f'Subject: {mail_subject}')
 
-                split = mail_content.split('000')
+                split = mail_content.split('XXX')
                 sender = mail_from[mail_from.find("<")+1:mail_from.find(">")]
                 for x in split:
+                    print(x)
                     if len(x) == 8:
-                        print(f'Success on split len 8: {x}')
+                        print(f'Success on split len 8: {x}')      
                         if check_code(x, sender):
                             split.remove(x)
                             c = ' '.join(split)
                             dispatch_email(sender, mail_subject, c)
+                            return
                         else:
                             send_error_email(sender)
+                            return
+                
+                # send_error_email(sender)
 
 def get_strikes(strikes):
     now = datetime.now()
@@ -318,7 +323,11 @@ def cancel_all_subs(writer):
     r = wdb.find_one({ "email": writer })
     for s in r["subscribers"]:
             print(s["transaction_id"])
-            stripe.Subscription.delete(s["transaction_id"])
+            try:
+                stripe.Subscription.delete(s["transaction_id"])
+            except:
+                print("Failed to cancel sub for", s["transaction_id"])
+
 
 def payout_user_email(writer):
     print("payout_user_email", writer)
@@ -335,7 +344,11 @@ Have a nice day!
 def cancel_vendor_account(writer):
     print("cancel_vendor_account", writer)
     w = wdb.find_one({"email": writer})
-    stripe.Account.delete(w["account_id"])
+    try:
+        stripe.Account.delete(w["account_id"])
+    except:
+        print("Deleted account", w["account_id"])
+    
 
 def check_payout_users():
     now = datetime.now()
@@ -357,6 +370,13 @@ def check_payout_users():
                     destination=destination,
                 )
                 payout_user_email(w["email"])
+            else:
+                print("Strike for", w["email"])
+                if get_strikes(w["strikes"]) == 0:
+                    warning_email(w["email"], w["subscribers"])
+                else:
+                    expire_subscription(w["email"], w["subscribers"])
+                wdb.update_one({'email': w["email"] },{'$push': {'strikes': now}}) 
 
 inter=setInterval(10,cron_job)
 print('Start time : {:.1f}s'.format(time.time()-StartTime))
