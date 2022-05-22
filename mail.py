@@ -23,6 +23,7 @@ url = os.getenv('MONGO_URL')
 client = MongoClient("mongodb+srv://server:Pfi88XLO8TrqSgqY@cluster0.ztv48.mongodb.net/Main?retryWrites=true&w=majority")
 main_db = client.Main
 wdb = main_db.Writers
+adb = main_db.Admin
 # connect to the server and go to its inbox
 mail = imaplib.IMAP4_SSL(IMAP_SERVER)
 mail.login(EMAIL, PASSWORD)
@@ -305,7 +306,7 @@ Have a nice day!
     '''    
     now = datetime.now()
     c = wdb.find_one({ "email": sender })
-    a = wdb.find_one({ "admin": True })
+    a = adb.find_one({ "admin": True })
     if c["last_send_date"] > a["last_paid"] + timedelta(days=30):
         send_email(sender, double_send)
     for x in c["subscribers"]:
@@ -338,10 +339,10 @@ def cancel_vendor_account(writer):
 
 def check_payout_users():
     now = datetime.now()
-    a = wdb.find_one({"admin": True})
+    a = adb.find_one({"admin": True})
     print("Check Payout Users", (a["last_paid"] < (now - timedelta(days=30))))
     if (a["last_paid"] < (now - timedelta(days=30))):
-        wdb.update_one(
+        adb.update_one(
             {'admin': True },
             {'$set': {'last_paid': now.replace(microsecond=0)}})
         ws = wdb.find({ "expired": False, "accepted": True }) 
