@@ -215,7 +215,10 @@ def webhook_received():
         if x["id"] == 'transfers':
             print(x['account'])
             acc = stripe.Account.retrieve(x['account'])
-            print(acc)
+            print(acc.metadata)
+            if acc.metadata.get('email') == None or acc.metadata.get('secret_code') == None:
+                return "Metadata wrong"
+            
             account_email = acc['metadata']['email']
             secret_code = acc['metadata']['secret_code']
             r = wdb.find_one({ "email": account_email, 'secret_code': secret_code, 'accepted': False, 'expired': False })
@@ -229,7 +232,9 @@ def webhook_received():
                 return "No writer invite existed"
 
     if event_type == 'checkout.session.completed':
-        print(x)
+        print(x.metadata)
+        if not x.metadata.get('writer') or not x.metadata.get('desc'):
+            return "Metadata wrong"
         writer = x.metadata.writer
         desc = x.metadata.desc
         requestBool = x.metadata.requestBool
@@ -279,7 +284,7 @@ def webhook_received():
         
         print('🔔 Payment succeeded!')
 
-    return j({'status': 'success'})
+    return j({'status': True})
 
 
 # ------------------------ internal stripe api stuff above
@@ -377,6 +382,9 @@ def deny_request():
     if r:
         wdb.update_one({'email': email },{'$set': {'expired': True}})
         deny_email(email, r["genesis_inviter"])
+        for s in r["subscribers"]:
+            print(s["transaction_id"])
+            stripe.Subscription.delete(s["transaction_id"])
         return render_template('sucessfulrequest.html')
     else:
         return render_template('somethingwentwrong.html')
