@@ -246,7 +246,8 @@ def webhook_received():
             return "Metadata wrong"
         writer = x.metadata.writer
         desc = x.metadata.desc
-        requestBool = x.metadata.requestBool == "true"
+        print(x.metadata.requestBool, type(x.metadata.requestBool), x.metadata.requestBool == "True", x.metadata.requestBool == True, x.metadata.requestBool == 'True')
+        requestBool = x.metadata.requestBool == "True"
         requester = x.customer_details.email
         name = x.customer_details.name
         secret_code = str(int(random.random() * 10 ** 8))
@@ -323,6 +324,18 @@ def get_user():
             {"subscribers": {"$elemMatch": { "email": user_info["email"]}}},  
             { "subscribers": 0 })
     return j(o(user_subs))
+
+@app.route('/get-writer-via-secret', methods=['GET'])
+def get_writer_via_secret():
+    secret_code = request.args.get('secret_code')
+    email = request.args.get('writer_email')
+    print(secret_code, email)
+    r = wdb.find_one({ "email": email, "secret_code": secret_code, "expired": False, "accepted": False})
+    if r:
+        return r
+    else:
+        return j("Invalid data"), 401
+        
 
 @app.route('/get-writer', methods=['GET'])
 def get_writer():
