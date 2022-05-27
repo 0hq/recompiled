@@ -42,6 +42,7 @@ url = os.getenv('MONGO_URL')
 client = MongoClient("mongodb+srv://server:Pfi88XLO8TrqSgqY@cluster0.ztv48.mongodb.net/Main?retryWrites=true&w=majority")
 main_db = client.Main
 wdb = main_db.Writers
+adb = main_db.Admin
 stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
 stripe.api_version = os.getenv('STRIPE_API_VERSION', '2019-12-03')
 static_dir = str(os.path.abspath(os.path.join(__file__ , "..", os.getenv("STATIC_DIR"))))
@@ -234,7 +235,7 @@ def webhook_received():
             r = wdb.find_one({ "email": account_email, 'secret_code': secret_code, 'accepted': False, 'expired': False })
             if r:
                 wdb.update_one({'email': account_email },{'$set': {'accepted': True, 'account_id': x['account'] }})
-                accept_email(account_email, r["genesis_inviter"])
+                accept_email(account_email, r["genesis_inviter"], r["secret_code"])
                 stripe.Subscription.modify(r["subscribers"][0]["transaction_id"],
                     trial_end='now',
                 )
@@ -452,9 +453,9 @@ Subject: Someone wants to pay you $5/month to write!
 
 {requester} has requested you to start a monthly newsletter on specific topic. If you accept, you'll get $5/month per subscriber that signs up, all you have to do is send an email newsletter every month, covering "{desc}".
 
-If you're interested in learning more, head to https://recompiled.fyi/request?writer_email={writer}&secret_code={code}
+If you're interested in learning more, head to https://recompiled.fyi/register?writer_email={writer}&secret_code={code}
 
-If you're not interested, feel free to deny this request by clicking here: https://recompiled.fyi/deny-request?writer_email={writer}&secret_code={code}
+If you're not interested, feel free to deny this request by clicking here: https://recompiled-production.up.railway.app/deny-request?writer_email={writer}&secret_code={code}
 
 Have a nice day!
 - Will DePue
@@ -470,16 +471,22 @@ Have a nice day!
     send_email(writer, writer_content) 
     send_email(requester, requester_content) 
 
-def accept_email(writer, requester):
+def accept_email(writer, requester, code):
     print ("(accept_email)", writer, requester)
+    a = adb.find_one({ "admin": True })
+    due = a["last_paid"] + timedelta(days=30)
     writer_content = f'''\
 Subject: You've accepted the invitation to write each month.
 
-Thanks for accepting your invitation to write updates each month. As a reminder: You'll have to send an email to dispatch@recompiled.fyi any time each month to get paid out your 5$/subscriber/month. We'll send you $5 at the end of the month (starting from 7 days after you were requested). 
+Your newsletter is due on {due.date()}
+
+You must include this code anywhere in your email to dispatch@recompiled.fyi: XXX{code}XXX
+
+Thanks for accepting your invitation to write updates each month. As a reminder: You'll have to send an email to dispatch@recompiled.fyi any time each month to get paid out your 5$/subscriber/month. We'll send you $5/sub (minus fees and stuff - around 1.5 dollars per) at the end of the period. 
 
 It would be best to send your genesis update soon, as it's really helpful for people to get a hang of what you'll be writing about early on after they subscribed. You can do that by sending to dispatch@recompiled.fyi or follow the detailed instrucations on the site.
 
-For more info, please access the panel at recompiled.fyi to manage your account and see more details. Be sure to remember to send your update this month!
+For more info, please access the panel at https://recompiled.fyi/login to manage your account and see more details. Be sure to remember to send your update this month!
 
 Have a nice day!
 - Will DePue
@@ -487,7 +494,7 @@ Have a nice day!
     requester_content = f'''\
 Subject: Your request to {writer} has been accepted!
 
-{writer} has accepted your request to write each month. You'll be supporting their work for $5 and you can unsubscribe at any time @ recompiled.fyi. Thank you so much!
+{writer} has accepted your request to write each month. You'll be supporting their work for $5 and you can unsubscribe at any time @ https://recompiled.fyi/login. Thank you so much!
 
 Have a nice day :)
 - Will DePue

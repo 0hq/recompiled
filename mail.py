@@ -70,21 +70,7 @@ def check_invite_expiry():
     for w in ws:
         if w["start_date"] < (now - timedelta(days=7)):
             print("Expire for", w["email"])
-            expire_invite(w["email"], w["genesis_inviter"])
-
-# disabled
-def check_subscription_expiry():
-    now = datetime.now()
-    ws = wdb.find({ "accepted": True, "expired": False}) # gets all writers
-    print("Check Subscription Expiry. Checking:", len(list(ws.clone())))
-    for w in ws:
-        if w["last_send_date"] < (a["last_paid"] -timedelta(days=30)):
-            print("Strike for", w["email"])
-            if get_strikes(w["strikes"]) == 0:
-                warning_email(w["email"], w["subscribers"])
-            else:
-                expire_subscription(w["email"], w["subscribers"])
-            wdb.update_one({'email': w["email"] },{'$push': {'strikes': now}}) 
+            expire_invite(w["email"], w["genesis_inviter"]) 
 
 def search_unseen():
     mail = imaplib.IMAP4_SSL(IMAP_SERVER)
@@ -169,11 +155,11 @@ def search_unseen():
                             c = ' '.join(split)
                             dispatch_email(sender, mail_subject, c)
                             return
-                        else:
-                            send_error_email(sender)
-                            return
+                        # else:
+                        #     send_error_email(sender)
+                        #     return
                 
-                # send_error_email(sender)
+                send_error_email(sender)
 
 def get_strikes(strikes):
     now = datetime.now()
@@ -261,7 +247,7 @@ Have a nice day!
         send_email(s["email"], inviter_content)
     wdb.update_one({'email': writer },{'$set': {'expired': True}})
     cancel_all_subs(writer)
-    cancel_vendor_account(writer)
+    # cancel_vendor_account(writer)
 
 def check_code(code, sender):
     print("check_code", code, sender)
@@ -274,7 +260,9 @@ def send_error_email(sender):
     error_content = f'''\
 Subject: Oops, that didn't work.
 
-We just got an email from you to dispatch at Recompiled but it didn't look right. Double check that you included your writer code (you can check on our website) or that you sent from the right email account.
+We just got an email from you to dispatch at Recompiled but it didn't look right. Double check that you included your writer code (you can check on our website) or that you sent from the right email account. It should look like XXX12345678XXX where the middle numbers are your code (include it anywhere in the email, we'll find it).
+
+Remember, you can always check your writer code at https://recompiled.fyi/login
 
 If this wasn't you, reply to this email and we'll make sure your account is secure.
 
@@ -290,6 +278,7 @@ Subject: {subject}
 
 {content}
 
+Content from {sender}.
 This is from a Recompiled email list. 
 Cancel this paid subscribtion our website @ recompiled.fyi.
     '''
@@ -364,11 +353,12 @@ def check_payout_users():
                 amount = 3000 * len(w["subscribers"])
                 print("Payout for", w["email"], amount)
                 destination = w["account_id"]
-                transfer = stripe.Transfer.create(
-                    amount=amount,
-                    currency="usd",
-                    destination=destination,
-                )
+                print(amount, destination)
+                # transfer = stripe.Transfer.create(
+                #     amount=amount,
+                #     currency="usd",
+                #     destination=destination,
+                # )
                 payout_user_email(w["email"])
             else:
                 print("Strike for", w["email"])
