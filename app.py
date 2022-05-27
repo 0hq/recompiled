@@ -332,7 +332,7 @@ def get_writer_via_secret():
     print(secret_code, email)
     r = wdb.find_one({ "email": email, "secret_code": secret_code, "expired": False, "accepted": False})
     if r:
-        return r
+        return j(o(r))
     else:
         return j("Invalid data"), 401
         
