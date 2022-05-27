@@ -26,8 +26,6 @@ from flask import Flask, jsonify as j, render_template, redirect, request, sessi
 import stripe
 from flask_cors import CORS
 
-
-
 load_dotenv(find_dotenv())
 
 EMAIL = os.getenv('EMAIL')
@@ -110,9 +108,6 @@ def _generate_account_link(account_id, origin):
     )
     return account_link.url
 
-@app.route('/', methods=['GET'])
-def get_example():
-    return render_template('index.html')
 
 @app.route('/config', methods=['GET'])
 def get_publishable_key():
@@ -253,7 +248,6 @@ def webhook_received():
         requester = x.customer_details.email
         name = x.customer_details.name
         secret_code = str(int(random.random() * 10 ** 8))
-        
         r = wdb.find_one({ "email": writer, 'accepted': True, 'expired': False })
         print(r, requestBool, Boolean(r), Boolean(requestBool))
         if r and not requestBool:
@@ -270,6 +264,8 @@ def webhook_received():
             wdb.update_one({'email': writer },{'$push': {'subscribers': new_sub}})
             send_new_sub_emails(writer, requester)
         elif requestBool and not r:
+            d = wdb.delete_many({ "email": writer  })
+            print(d)
             db_entry = {
                 "name": "",
                 "genesis_inviter": requester,
@@ -303,13 +299,6 @@ def webhook_received():
 
 # ------------------------ internal stripe api stuff above
 
-@app.route('/register', methods=['GET'])
-def get_register():
-    return render_template('register.html')
-
-@app.route('/login', methods=['GET'])
-def get_login():
-    return render_template('login.html')
 
 @app.route('/get-user', methods=['GET'])
 def get_user():
@@ -378,7 +367,7 @@ def cancel_sub():
     wdb.update_one(
             {"email": writer },  
             { "$pull": {"subscribers": { "email": user_info["email"]}} })
-    cancel_email(writer, user_info["email"])
+    cancel_email(writer, user_info["email"], len(r["subscribers"]) - 1)
     try:
         stripe.Subscription.delete(sub_id)
     except:
@@ -404,10 +393,6 @@ def cancel_writer():
         return render_template('sucessfulrequest.html')
     else:
         return render_template('somethingwentwrong.html')
-
-@app.route('/accept-request', methods=['GET'])
-def request_test():
-    return render_template('index.html') # request.html
 
 # done
 @app.route('/deny-request', methods=['GET'])
@@ -523,7 +508,7 @@ Have a nice day :)
     send_email(writer, writer_content) 
     send_email(requester, requester_content) 
     
-def cancel_email(writer, sub):
+def cancel_email(writer, sub, subcount):
     print ("(send_new_sub_emails)", writer, sub)
     sub_content = f'''\
 Subject: You just canceled your subscription to {writer}'s monthly letter.
@@ -536,7 +521,7 @@ Have a nice day!
     writer_content = f'''\
 Subject: You just lost a subscriber.
 
-{sub} has canceled their subscription.
+{sub} has canceled their subscription. You now have {subcount} subscribers left.
 
 Have a nice day!
 - Will DePue
