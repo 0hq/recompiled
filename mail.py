@@ -361,7 +361,7 @@ def check_payout_users():
         ws = wdb.find({ "expired": False, "accepted": True }) 
         for w in ws:
             if w["last_send_date"] > (now - timedelta(days=30)): # i need to go through this logic more
-                amount = 5000 * len(w["subscribers"])
+                amount = 3000 * len(w["subscribers"])
                 print("Payout for", w["email"], amount)
                 destination = w["account_id"]
                 transfer = stripe.Transfer.create(

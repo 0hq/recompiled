@@ -17,6 +17,7 @@ import math
 from pprint import pprint
 from xmlrpc.client import Boolean
 from bson import json_util
+from jinja2 import Undefined
 from magic_admin import Magic
 from datetime import datetime, timedelta
 from pymongo import MongoClient
@@ -354,19 +355,25 @@ def get_writer():
 @app.route('/cancel-sub', methods=['GET'])
 def cancel_sub():
     id = request.args.get('id')
-    writer = request.args.get('writer')
     print(id)
     try:
         magic.Token.validate(id)
-        issuer = magic.Token.getIssuer(id)
+        issuer = magic.Token.get_issuer(id)
         user_info = magic.User.get_metadata_by_issuer(issuer).data
     except:
         return j("Invalid token"), 401
 
+    writer = request.args.get('writer')
+    print(writer)
+
     r = wdb.find_one({"email": writer, "subscribers": {"$elemMatch": { "email": user_info["email"]}}})
     print(r)
-    sub_id = r["subscribers"]["transaction_id"]
-    print(sub_id)
+    sub_id = Undefined
+    for sub in r["subscribers"]:
+        print(sub)
+        if sub['email'] == user_info["email"]:
+            sub_id = sub["transaction_id"];
+
     wdb.update_one(
             {"email": writer },  
             { "$pull": {"subscribers": { "email": user_info["email"]}} })
