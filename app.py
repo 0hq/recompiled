@@ -469,7 +469,9 @@ def send_request_email(writer, requester, desc, code):
     writer_content = f'''\
 Subject: Someone wants to pay you $5/month to write!
 
-{requester} has requested you to start a monthly newsletter on specific topic. If you accept, you'll get $5/month per subscriber that signs up, all you have to do is send an email newsletter every month, covering "{desc}".
+{requester} has requested you to start a monthly newsletter on specific topic. If you accept, you'll get $5/month per subscriber that signs up, all you have to do is send an email newsletter every month, covering: 
+
+"{desc}"
 
 If you're interested in learning more, head to https://recompiled.fyi/register?writer_email={writer}&secret_code={code}
 
@@ -481,7 +483,7 @@ Have a nice day!
     requester_content = f'''\
 Subject: Your request to {writer} has been sent.
 
-This is an email confirming your request to {writer} - they'll have 7 days to accept before this subscription is canceled and you are refunded.
+This is an email confirming your request to {writer} - they'll have 7 days to accept before this subscription is canceled. You'll only be charged if they accept.
 
 Have a nice day!
 - Will DePue
@@ -499,6 +501,8 @@ Subject: You've accepted the invitation to write each month.
 Your newsletter is due on {due.date()}
 
 You must include this code anywhere in your email to dispatch@recompiled.fyi: XXX{code}XXX
+
+You can access your Stripe merchant account via https://connect.stripe.com/express_login
 
 Thanks for accepting your invitation to write updates each month. As a reminder: You'll have to send an email to dispatch@recompiled.fyi any time each month to get paid out your 5$/subscriber/month. We'll send you $5/sub (minus fees and stuff - around 1.5 dollars per) at the end of the period. 
 
