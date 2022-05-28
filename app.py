@@ -243,7 +243,7 @@ def webhook_received():
         if not x.metadata.get('writer'):
             return "Metadata wrong"
         writer = x.metadata.writer
-        desc = x.metadata.desc
+        desc = x.metadata.desc.encode('ascii', 'ignore')
         print(x.metadata.requestBool, type(x.metadata.requestBool), x.metadata.requestBool == "True", x.metadata.requestBool == True, x.metadata.requestBool == 'True')
         requestBool = x.metadata.requestBool == "True"
         requester = x.customer_details.email
