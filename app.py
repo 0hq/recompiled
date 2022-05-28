@@ -243,7 +243,7 @@ def webhook_received():
         if not x.metadata.get('writer'):
             return "Metadata wrong"
         writer = x.metadata.writer
-        desc = x.metadata.desc.encode('ascii', 'ignore')
+        desc = x.metadata.desc
         print(x.metadata.requestBool, type(x.metadata.requestBool), x.metadata.requestBool == "True", x.metadata.requestBool == True, x.metadata.requestBool == 'True')
         requestBool = x.metadata.requestBool == "True"
         requester = x.customer_details.email
@@ -291,7 +291,7 @@ def webhook_received():
             }
             print(db_entry)
             wdb.insert_one(db_entry)
-            send_request_email(writer, requester, desc, secret_code)
+            send_request_email(writer, requester, desc.encode('ascii', 'ignore'), secret_code)
         
         print('🔔 Payment succeeded!')
 
