@@ -207,7 +207,7 @@ def webhook_received():
                 payload=request.data, sig_header=signature, secret=webhook_secret)
             data = event['data']
         except Exception as e:
-            return e
+            return j(e)
         # Get the type of webhook event sent - used to check the status of PaymentIntents.
         event_type = event['type']
     else:
@@ -235,7 +235,7 @@ def webhook_received():
                     trial_end='now',
                 )
             else:
-                return "No writer invite existed"
+                return j("No writer invite existed")
 
     if event_type == 'checkout.session.completed':
         print(x.metadata)
