@@ -45,7 +45,7 @@ stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
 stripe.api_version = os.getenv('STRIPE_API_VERSION', '2019-12-03')
 static_dir = str(os.path.abspath(os.path.join(__file__ , "..", os.getenv("STATIC_DIR"))))
 app = Flask(__name__, static_folder=static_dir,
-            static_url_path="",)
+            static_url_path="", template_folder=static_dir)
 app.secret_key = b'_5#y2L"F4Q8z\n\xec]/'
 
 CORS(app)
