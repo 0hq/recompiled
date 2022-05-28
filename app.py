@@ -114,7 +114,7 @@ def _generate_account_link(account_id, origin):
 def get_publishable_key():
     return j({
         'publishableKey': os.getenv('STRIPE_PUBLISHABLE_KEY'),
-        'ba,sicPrice': "price_1Kx1ECEDdGyhVvwd5Q0BTcOX",
+        'basicPrice': "price_1L4Xa7EDdGyhVvwdLkYMvixU",
         'proPrice': "price_1Kx1ECEDdGyhVvwd5Q0BTcOX"
     })
 
@@ -183,7 +183,7 @@ def create_checkout_session():
                 'trial_end': trial
             },
             line_items=[{
-                'price': "price_1L0gfqEDdGyhVvwdhITGKMN9",
+                'price': "price_1L4Xa7EDdGyhVvwdLkYMvixU",
                 'quantity': 1
             }]
         )
