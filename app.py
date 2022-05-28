@@ -192,12 +192,12 @@ def create_checkout_session():
         return j({'error': {'message': str(e)}}), 400
 
 
-@app.route('/webhook', methods=['POST'])
-def webhook_received():
+@app.route('/webhook-direct', methods=['POST'])
+def webhook_direct():
     # stripe listen --forward-to localhost:4242/webhook
     # You can use webhooks to receive information about asynchronous payment events.
     # For more about our webhook events check out https://stripe.com/docs/webhooks.
-    webhook_secret = os.getenv('STRIPE_WEBHOOK_SECRET')
+    webhook_secret = os.getenv('STRIPE_WEBHOOK_SECRET_DIRECT')
     request_data = json.loads(request.data)
 
     if webhook_secret:
@@ -208,7 +208,8 @@ def webhook_received():
                 payload=request.data, sig_header=signature, secret=webhook_secret)
             data = event['data']
         except Exception as e:
-            return j(e)
+            print(e)
+            return "Exception from Direct"
         # Get the type of webhook event sent - used to check the status of PaymentIntents.
         event_type = event['type']
     else:
@@ -217,26 +218,6 @@ def webhook_received():
     x = data['object']
 
     print('event ' + event_type)
-
-    if event_type == 'capability.updated':
-        if x["id"] == 'transfers':
-            print(x['account'])
-            acc = stripe.Account.retrieve(x['account'])
-            print(acc.metadata)
-            if acc.metadata.get('email') == None or acc.metadata.get('secret_code') == None:
-                return "Metadata wrong"
-            
-            account_email = acc['metadata']['email']
-            secret_code = acc['metadata']['secret_code']
-            r = wdb.find_one({ "email": account_email, 'secret_code': secret_code, 'accepted': False, 'expired': False })
-            if r:
-                wdb.update_one({'email': account_email },{'$set': {'accepted': True, 'account_id': x['account'] }})
-                accept_email(account_email, r["genesis_inviter"], r["secret_code"])
-                stripe.Subscription.modify(r["subscribers"][0]["transaction_id"],
-                    trial_end='now',
-                )
-            else:
-                return j("No writer invite existed")
 
     if event_type == 'checkout.session.completed':
         print(x.metadata)
@@ -293,9 +274,59 @@ def webhook_received():
             print(db_entry)
             wdb.insert_one(db_entry)
             send_request_email(writer, requester, desc, secret_code)
+        # need to make a case if these all fail
         
         print('🔔 Payment succeeded!')
 
+    return j({'status': True})
+
+@app.route('/webhook-connect', methods=['POST'])
+def webhook_connect():
+    # stripe listen --forward-to localhost:4242/webhook
+    # You can use webhooks to receive information about asynchronous payment events.
+    # For more about our webhook events check out https://stripe.com/docs/webhooks.
+    webhook_secret = os.getenv('STRIPE_WEBHOOK_SECRET_CONNECT')
+    request_data = json.loads(request.data)
+
+    if webhook_secret:
+        # Retrieve the event by verifying the signature using the raw body and secret if webhook signing is configured.
+        signature = request.headers.get('stripe-signature')
+        try:
+            event = stripe.Webhook.construct_event(
+                payload=request.data, sig_header=signature, secret=webhook_secret)
+            data = event['data']
+        except Exception as e:
+            return "Exception from Connect"
+        # Get the type of webhook event sent - used to check the status of PaymentIntents.
+        event_type = event['type']
+    else:
+        data = request_data['data']
+        event_type = request_data['type']
+    x = data['object']
+
+    print('event ' + event_type)
+
+    if event_type == 'capability.updated':
+        if x["id"] == 'transfers':
+            print(x['account'])
+            acc = stripe.Account.retrieve(x['account'])
+            print(acc.metadata)
+            if acc.metadata.get('email') == None or acc.metadata.get('secret_code') == None:
+                return "Metadata wrong"
+            
+            account_email = acc['metadata']['email']
+            secret_code = acc['metadata']['secret_code']
+            r = wdb.find_one({ "email": account_email, 'secret_code': secret_code, 'accepted': False, 'expired': False })
+            if r:
+                wdb.update_one({'email': account_email },{'$set': {'accepted': True, 'account_id': x['account'] }})
+                accept_email(account_email, r["genesis_inviter"], r["secret_code"])
+                stripe.Subscription.modify(r["subscribers"][0]["transaction_id"],
+                    trial_end='now',
+                )
+                print('🔔 Connected account created!')
+            else:
+                return j("No writer invite existed")
+        
     return j({'status': True})
 
 
